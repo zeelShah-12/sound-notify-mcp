@@ -2,12 +2,9 @@ import struct
 import sys
 import wave
 import io
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from sound import SAMPLE_RATE, TONE_SEQUENCES, play_notification, synthesize_wav
+from sound_notify.sound import SAMPLE_RATE, TONE_SEQUENCES, play_notification, synthesize_wav
 
 
 def test_synthesize_wav_produces_valid_mono_16bit_wav():

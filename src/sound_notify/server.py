@@ -5,7 +5,7 @@ screen the whole time.
 
 from mcp.server.mcpserver import MCPServer
 
-from sound import play_notification
+from sound_notify.sound import play_notification
 
 server = MCPServer(
     "sound-notify",

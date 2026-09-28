@@ -28,29 +28,49 @@ a Claude Code lifecycle hook: it's flexible (Claude can pass a custom `message`,
 works in any MCP client, not just Claude Code) but relies on Claude remembering to call it,
 rather than firing unconditionally on every response.
 
-## Setup
+## Quick Start
+
+### Prerequisites
+
+- Python 3.10+
+- An MCP client (e.g. Claude Code CLI)
+
+### 1. Install
 
 ```bash
-cd "14 project"
-pip install -r requirements.txt
+pip install git+https://github.com/zeelShah-12/sound-notify-mcp.git
 ```
 
-### Add it to Claude Code
+This puts a `sound-notify` command on your PATH — no cloning, no hardcoded file paths.
+
+### 2. Register it with Claude Code
 
 ```bash
-claude mcp add sound-notify -- python "D:\linkedin projects\14 project\server.py"
+sound-notify setup
 ```
 
-(Use `--scope project` to check the server config into a repo's `.mcp.json` instead of
-your user-level config, if you want a project to bring its own notification server.)
+```text
+Registered 'sound-notify' with Claude Code.
+Added stdio MCP server sound-notify with command: sound-notify serve to local config
+Restart Claude Code (or start a new session) and it will have a `notify` tool.
+```
 
-Verify it's connected:
+No credentials to enter — this server needs none. If the `claude` CLI isn't on your PATH,
+`sound-notify setup` tells you the one manual command to run instead:
+
+```bash
+claude mcp add sound-notify -- sound-notify serve
+```
+
+### 3. Restart your client
+
+Restart Claude Code (or start a new session) and check it connected:
 
 ```bash
 claude mcp list
 ```
 
-### Add it to Claude Desktop
+### Add it to Claude Desktop instead
 
 Add this to `claude_desktop_config.json`:
 
@@ -58,8 +78,8 @@ Add this to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "sound-notify": {
-      "command": "python",
-      "args": ["D:\\linkedin projects\\14 project\\server.py"]
+      "command": "sound-notify",
+      "args": ["serve"]
     }
   }
 }
@@ -83,40 +103,54 @@ Example call and result:
 This was built and verified end-to-end, not just unit-tested in isolation:
 
 ```bash
-pip install -r requirements-dev.txt
+git clone https://github.com/zeelShah-12/sound-notify-mcp.git
+cd sound-notify-mcp
+pip install -r requirements-dev.txt   # editable install + pytest
 pytest -v
 ```
 
-12 tests cover three layers:
+15 tests cover four layers:
 - **Tone synthesis** (`tests/test_sound.py`) — the generated WAV has the right sample rate,
   channel count, duration, and never clips past 16-bit range.
 - **Playback backend selection** (`tests/test_sound.py`) — the correct OS-specific player is
   invoked, with the fallback path exercised too.
+- **The `setup` CLI** (`tests/test_cli.py`) — registration succeeds, fails gracefully when
+  `claude` isn't installed, and (see the bug below) actually passes the right subprocess flags.
 - **The actual MCP protocol** (`tests/test_server.py`) — one test talks to the server
-  in-process, and one spawns `server.py` as a real subprocess and talks MCP-over-stdio to
-  it, exactly the way Claude Code or Claude Desktop does: list tools, call `notify`, check
-  the response. That subprocess test uses the *real* (non-mocked) sound backend, so it
-  doubles as a smoke test that audio playback doesn't crash on the current machine.
+  in-process, and one spawns the installed `sound-notify serve` console script as a real
+  subprocess and talks MCP-over-stdio to it, exactly the way Claude Code or Claude Desktop
+  does: list tools, call `notify`, check the response. That subprocess test uses the *real*
+  (non-mocked) sound backend, so it doubles as a smoke test that audio playback doesn't
+  crash on the current machine.
 
-## A real bug this caught
+## Real bugs this caught
 
-The first version called `winsound.PlaySound(data, SND_MEMORY | SND_ASYNC)` on Windows.
-It passed every unit test (which mocked `winsound`) but failed the very first time it
-actually tried to play a sound: `RuntimeError: Cannot play asynchronously from memory` —
-Windows' `SND_ASYNC` flag isn't supported together with `SND_MEMORY`. Fixed by playing
-synchronously, which is a non-issue since a chime is well under a second long. This is
-exactly why the subprocess test above calls the real backend instead of only mocking it.
+Both of these passed their first, naively-mocked unit test and only broke against the real
+thing — which is why the test suite above insists on exercising real subprocesses/binaries
+wherever practical, not just mocked interfaces:
+
+- **`winsound.PlaySound(data, SND_MEMORY | SND_ASYNC)` on Windows** raised
+  `RuntimeError: Cannot play asynchronously from memory` the first time it actually tried to
+  play a sound — `SND_ASYNC` isn't supported together with `SND_MEMORY`. Fixed by playing
+  synchronously, a non-issue since a chime is well under a second long.
+- **`sound-notify setup` calling `subprocess.run(["claude", ...])`** raised
+  `FileNotFoundError: [WinError 2]` against the real `claude` CLI on Windows, because
+  `claude` resolves to a `.cmd` shim that `CreateProcess` can't launch without a shell.
+  Fixed by passing `shell=True` on Windows only.
 
 ## Project structure
 
 ```
 14 project/
-├── server.py              MCP server + the `notify` tool definition
-├── sound.py                Tone synthesis (stdlib `wave`/`math`) + cross-platform playback
+├── pyproject.toml           Packaging + the `sound-notify` console-script entry point
+├── src/sound_notify/
+│   ├── __main__.py            CLI: `sound-notify serve` / `sound-notify setup`
+│   ├── server.py               MCP server + the `notify` tool definition
+│   └── sound.py                 Tone synthesis (stdlib `wave`/`math`) + cross-platform playback
 ├── tests/
-│   ├── test_sound.py        Synthesis + backend-selection unit tests
-│   └── test_server.py        Real MCP protocol tests (in-process + stdio subprocess)
-├── requirements.txt
+│   ├── test_sound.py            Synthesis + backend-selection unit tests
+│   ├── test_cli.py               `setup` command tests
+│   └── test_server.py             Real MCP protocol tests (in-process + stdio subprocess)
 ├── requirements-dev.txt
 └── pytest.ini
 ```
