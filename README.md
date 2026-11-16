@@ -98,6 +98,8 @@ Example call and result:
 "Played success notification via audio device -- finished refactoring the auth module"
 ```
 
+**Agent skill:** [`sound-notify/SKILL.md`](sound-notify/SKILL.md) tells agents (Claude Code, Cursor, Copilot, ...) when to call `notify` and when not to. Drop it into your agent's skills folder alongside the MCP server.
+
 ## Verifying it actually works
 
 This was built and verified end-to-end, not just unit-tested in isolation:
